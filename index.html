@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f3ed" />
+    <meta name="description" content="A little place to leave a wish, and keep it close." />
+    <title>Wishing Jar — hold a little hope</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Wishing Jar home"><span class="brand-mark">✳</span> wishing jar</a>
+        <div class="top-note"><span class="live-dot"></span><span id="topStatus">A small place for big hopes</span></div>
+        <button class="share-link" id="shareButton" hidden><span aria-hidden="true">↗</span> Share jar</button>
+      </header>
+
+      <section class="intro" id="intro">
+        <p class="eyebrow"><span>✦</span> A little wonder, made together <span>✦</span></p>
+        <h1>Some things are<br /><em>worth wishing for.</em></h1>
+        <p class="intro-copy">Fold a thought into a star. Leave it here, or send this jar to someone you love.</p>
+      </section>
+
+      <section class="stage" aria-label="Your wishing jar">
+        <div class="side-caption left-caption"><span class="caption-rule"></span><span>made of little<br />bright things</span></div>
+        <div class="jar-wrap" id="jarWrap">
+          <div class="jar-glow"></div>
+          <div class="jar" id="jar" role="button" tabindex="0" aria-label="Open a wish from the jar">
+            <div class="jar-lid" aria-hidden="true"></div>
+            <img class="jar-photo" src="jar-photo.png" alt="" aria-hidden="true" />
+            <div class="jar-neck"></div>
+            <div class="jar-lip"></div>
+            <div class="jar-body">
+              <div class="jar-inside-shine"></div>
+              <div class="star-layer" id="starLayer" aria-live="polite"></div>
+              <div class="glass-shine shine-left"></div>
+              <div class="glass-shine shine-right"></div>
+              <div class="glass-base"></div>
+            </div>
+            <div class="jar-foot"></div>
+          </div>
+          <div class="jar-shadow"></div>
+          <div class="jar-label" id="jarLabel"><span class="label-spark">✳</span><span id="wishCount">your wishing jar</span></div>
+          <div class="empty-prompt" id="emptyPrompt"><span>✦</span><br />your first wish<br />is waiting</div>
+          <div class="jar-instruction" id="jarInstruction">tap a star to open a wish <span>↗</span></div>
+        </div>
+        <div class="side-caption right-caption"><span class="caption-number" id="wishNumber">01</span><span>every wish<br />has a home</span></div>
+      </section>
+
+      <section class="actions" id="landingActions">
+        <button class="primary-button" id="createButton"><span class="button-star">✦</span> Create my wishing jar <span class="button-arrow">→</span></button>
+        <p class="action-caption">A private little link, yours to share with anyone.</p>
+      </section>
+      <section class="actions" id="jarActions" hidden>
+        <button class="primary-button" id="writeButton"><span class="button-star">✦</span> Write a wish <span class="button-arrow">→</span></button>
+        <p class="action-caption" id="jarCaption">Leave something lovely for the next person.</p>
+      </section>
+
+      <footer class="footer"><span>✳</span> made with a little hope <span>·</span> keep it close, pass it on</footer>
+    </main>
+
+    <div class="modal-backdrop" id="wishModal" aria-hidden="true">
+      <section class="note-card" role="dialog" aria-modal="true" aria-labelledby="noteHeading">
+        <button class="modal-close" id="closeModal" aria-label="Close">×</button>
+        <div class="note-tape"></div>
+        <p class="note-kicker" id="noteKicker">A wish for the jar</p>
+        <h2 id="noteHeading">What are you wishing for?</h2>
+        <textarea id="wishInput" maxlength="240" placeholder="Let it be something good…" aria-label="Your wish"></textarea>
+        <div class="note-bottom"><span id="characterCount">0 / 240</span><span>just between us and the stars</span></div>
+        <button class="note-submit" id="submitWish">Fold my wish <span>✦</span></button>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
