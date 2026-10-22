@@ -15,9 +15,6 @@
     <main class="app-shell">
       <header class="topbar">
         <a class="brand" href="./" aria-label="Wishing Jar home"><span class="brand-mark">✳</span> wishing jar</a>
-        <div class="jar-name-control" id="jarNameControl" hidden>
-          <button class="jar-name-button" id="renameJarButton" type="button" aria-label="Rename this jar"><span id="jarNameLabel">My wishing jar</span><span class="edit-mark" aria-hidden="true">✎</span></button>
-        </div>
       </header>
 
       <section class="hero-layout">
@@ -57,7 +54,8 @@
             <div class="jar-foot"></div>
           </div>
           <div class="jar-shadow"></div>
-          <div class="jar-label" id="jarLabel"><span class="label-spark">✳</span><span id="wishCount">your wishing jar</span></div>
+          <span class="sr-only" id="jarNameLabel">My wishing jar</span>
+          <span class="sr-only" id="wishCount" aria-live="polite">your wishing jar</span>
           <div class="empty-prompt" id="emptyPrompt"><span>✦</span><br />your first wish<br />is waiting</div>
         </div>
       </section>

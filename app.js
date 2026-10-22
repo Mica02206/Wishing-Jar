@@ -9,7 +9,7 @@ const els = {
   close: $("#closeModal"), chars: $("#characterCount"), stars: $("#starLayer"),
   jar: $("#jar"), jarWrap: $("#jarWrap"), empty: $("#emptyPrompt"),
   count: $("#wishCount"), number: $("#wishNumber"),
-  jarNameControl: $("#jarNameControl"), jarNameLabel: $("#jarNameLabel"), renameJar: $("#renameJarButton"),
+  jarNameLabel: $("#jarNameLabel"),
   finishShare: $("#finishShareButton"),
   caption: $("#jarCaption"), toast: $("#toast")
 };
@@ -99,8 +99,6 @@ function showJarView() {
   els.jarActions.hidden = false;
   els.stage.classList.add("has-jar");
   els.stage.classList.toggle("read-only-view", readOnly);
-  els.jarNameControl.hidden = false;
-  els.renameJar.disabled = readOnly;
   els.finishShare.hidden = readOnly;
   els.caption.textContent = "Tap a star to read";
 }
@@ -461,42 +459,6 @@ els.create.addEventListener("click", async () => {
   history.pushState({}, "", jarUrl(id));
   await initJar(id);
   showToast("Your jar is ready to share ✦");
-});
-els.renameJar.addEventListener("click", () => {
-  if (readOnly) return;
-  const input = document.createElement("input");
-  input.className = "jar-name-input";
-  input.type = "text";
-  input.maxLength = 48;
-  input.value = jarName;
-  input.setAttribute("aria-label", "Jar name");
-  els.renameJar.replaceWith(input);
-  input.focus();
-  input.select();
-  let finished = false;
-  const finish = async (save) => {
-    if (finished) return;
-    finished = true;
-    const nextName = input.value.trim().slice(0, 48);
-    if (save && !nextName) showToast("A jar needs a name");
-    else if (save && nextName !== jarName) {
-      try {
-        if (firebase) await firebase.rename(jarId, nextName);
-        jarName = nextName;
-        localStorage.setItem(nameKey(jarId), jarName);
-        writeJarName();
-        showToast("Jar name saved");
-      } catch (error) {
-        showToast("The jar name could not be saved yet");
-      }
-    }
-    input.replaceWith(els.renameJar);
-  };
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
-    if (event.key === "Escape") { input.value = jarName; input.blur(); }
-  });
-  input.addEventListener("blur", () => finish(true));
 });
 els.palette.addEventListener("click", (event) => {
   if (readOnly) return;
