@@ -8,7 +8,7 @@ Serve this folder with any static HTTP server. For example, from this directory 
 
 ## Reference assets
 
-`image_14a79e.jpg` is the warm beige linen texture used for the page background. `jar-photo.png` is the transparent photoreal glass cutout used for the jar body. `origami-star.png` is a textured folded-paper lucky star; the app hue-tints it per wish color while keeping its folds and shadows.
+`image_14a79e.jpg` is the warm beige linen texture used for the page background. `jar-photo.png` is the transparent photoreal glass cutout used for the jar body. `origami-star.png` is a textured folded-paper lucky star; the app hue-tints it per wish color while keeping its folds and shadows. `sticky-note-texture.png` adds the wrinkled paper surface to the note and its folding animation.
 
 ## Shared jars with Firebase
 
@@ -20,5 +20,6 @@ Configure Firestore rules for your use case before sharing publicly. A permissiv
 
 - `Create my wishing jar` creates an empty jar and writes its ID into the current URL.
 - `Write a wish` opens a paper note. Submitting folds the note down and drops a new faceted star into the jar.
+- Each note is assigned a color when it opens; the folded star keeps the same color. Opening an existing star shows its wish on a matching-color note.
 - Click any star to unfold its wish, or click the jar to open a random wish.
 - The local demo syncs between tabs in the same browser. Firebase mode provides shared, real-time synchronization.

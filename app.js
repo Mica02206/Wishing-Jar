@@ -4,6 +4,7 @@ const $ = (selector) => document.querySelector(selector);
 const els = {
   intro: $("#intro"), create: $("#createButton"), write: $("#writeButton"),
   landing: $("#landingActions"), jarActions: $("#jarActions"), share: $("#shareButton"),
+  palette: $("#notePalette"), tray: $("#silverTray"), trayDrafts: $("#trayDrafts"), stage: $(".stage"),
   modal: $("#wishModal"), input: $("#wishInput"), submit: $("#submitWish"),
   close: $("#closeModal"), chars: $("#characterCount"), stars: $("#starLayer"),
   jar: $("#jar"), jarWrap: $("#jarWrap"), empty: $("#emptyPrompt"),
@@ -14,12 +15,23 @@ const els = {
 const params = new URLSearchParams(location.search);
 let jarId = params.get("jar");
 let wishes = [];
+let drafts = [];
 let firebase = null;
 let unsubscribe = null;
 let toastTimer;
 let physicsFrame = 0;
+let composingColor = null;
+let editingDraftId = null;
+let activeDrag = null;
+let suppressNextClick = false;
 const palette = ["rose", "peach", "sunshine", "leaf", "sky", "cobalt", "lilac", "coral"];
 const starHue = { rose: "295deg", peach: "350deg", sunshine: "15deg", leaf: "110deg", sky: "150deg", cobalt: "190deg", lilac: "245deg", coral: "330deg" };
+const noteTheme = {
+  rose: { paper: "#f5a7c4", hue: "270deg" }, peach: { paper: "#ffd09a", hue: "335deg" },
+  sunshine: { paper: "#ffe68a", hue: "0deg" }, leaf: { paper: "#b8e2b6", hue: "92deg" },
+  sky: { paper: "#a8e3e8", hue: "145deg" }, cobalt: { paper: "#b4c6f5", hue: "175deg" },
+  lilac: { paper: "#d9b9e8", hue: "225deg" }, coral: { paper: "#ffb0a1", hue: "310deg" }
+};
 
 const firebaseReady = Object.values(firebaseConfig).every((value) => Boolean(value));
 if (firebaseReady) {
@@ -32,16 +44,23 @@ if (firebaseReady) {
   firebase = {
     create: async (id) => dbSdk.setDoc(dbSdk.doc(db, "jars", id), { wishes: [], createdAt: Date.now() }),
     listen: (id, callback) => dbSdk.onSnapshot(dbSdk.doc(db, "jars", id), (snapshot) => callback(snapshot.exists() ? snapshot.data().wishes ?? [] : [])),
-    add: async (id, wish) => dbSdk.updateDoc(dbSdk.doc(db, "jars", id), { wishes: dbSdk.arrayUnion(wish) })
+    add: async (id, wish) => dbSdk.updateDoc(dbSdk.doc(db, "jars", id), { wishes: dbSdk.arrayUnion(wish) }),
+    remove: async (id, wish) => dbSdk.updateDoc(dbSdk.doc(db, "jars", id), { wishes: dbSdk.arrayRemove(wish) })
   };
 }
 
 function localKey(id) { return `wishing-jar:${id}`; }
+function draftKey(id) { return `wishing-jar-drafts:${id}`; }
 function readLocal(id) {
   try { return JSON.parse(localStorage.getItem(localKey(id)) || "[]"); }
   catch { return []; }
 }
+function readDrafts(id) {
+  try { return JSON.parse(localStorage.getItem(draftKey(id)) || "[]"); }
+  catch { return []; }
+}
 function writeLocal(id, list) { localStorage.setItem(localKey(id), JSON.stringify(list)); }
+function writeDrafts() { if (jarId) localStorage.setItem(draftKey(jarId), JSON.stringify(drafts)); }
 function makeId() {
   return crypto.randomUUID ? crypto.randomUUID().replaceAll("-", "").slice(0, 12) : Math.random().toString(36).slice(2, 14);
 }
@@ -58,20 +77,30 @@ function showToast(message) {
 }
 function showJarView() {
   els.landing.hidden = true;
-  els.jarActions.hidden = false;
+  els.jarActions.hidden = true;
+  els.stage.classList.add("has-jar");
   els.share.hidden = false;
   els.topStatus.textContent = "A jar made just for you";
   els.caption.textContent = "Leave something lovely for the next person.";
 }
-function openModal(readWish = null) {
+function openModal(readWish = null, selectedColor = null, draftWish = null) {
   const reading = Boolean(readWish);
+  const editing = Boolean(draftWish);
+  const currentWish = readWish || draftWish;
+  composingColor = currentWish ? (currentWish.color || "rose") : (selectedColor || palette[Math.floor(Math.random() * palette.length)]);
+  editingDraftId = editing ? draftWish.id : null;
+  const theme = noteTheme[composingColor] || noteTheme.rose;
+  els.modal.style.setProperty("--note-paper", theme.paper);
+  els.modal.style.setProperty("--note-hue", theme.hue);
   $("#noteKicker").textContent = reading ? "A wish from the jar" : "A wish for the jar";
-  $("#noteHeading").textContent = reading ? "Someone wished for…" : "What are you wishing for?";
-  els.input.value = reading ? readWish.text : "";
+  $("#noteHeading").textContent = reading ? "A wish" : editing ? "Edit your wish" : "Write a wish";
+  els.input.value = currentWish ? currentWish.text : "";
   els.input.readOnly = reading;
-  els.input.placeholder = "Let it be something good…";
-  els.chars.textContent = reading ? "folded with hope" : "0 / 240";
+  els.input.placeholder = "";
+  els.chars.textContent = reading ? "" : "0 / 240";
   els.submit.hidden = reading;
+  els.modal.classList.toggle("reading", reading);
+  els.chars.textContent = reading ? "" : `${els.input.value.length} / 240`;
   els.modal.classList.add("open");
   els.modal.setAttribute("aria-hidden", "false");
   if (!reading) setTimeout(() => els.input.focus(), 200);
@@ -81,10 +110,22 @@ function closeModal() {
   els.modal.setAttribute("aria-hidden", "true");
   els.input.readOnly = false;
   els.submit.hidden = false;
+  editingDraftId = null;
 }
 function starSvg(color, id) {
   const hue = starHue[color] || starHue.rose;
   return `<img class="star-art" src="origami-star.png" alt="" aria-hidden="true" draggable="false" style="--star-hue:${hue}" data-star-id="${id}">`;
+}
+function seededRandom(seedText) {
+  let seed = 2166136261;
+  for (const char of seedText) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
+  return () => {
+    seed += 0x6D2B79F5;
+    let value = seed;
+    value = Math.imul(value ^ value >>> 15, value | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
 }
 function renderStars(animateLast = false) {
   els.stars.innerHTML = "";
@@ -93,14 +134,11 @@ function renderStars(animateLast = false) {
   const visible = wishes.slice(-maxVisible);
   const width = els.stars.clientWidth || 184;
   const height = els.stars.clientHeight || 218;
-  const spacingX = 42;
-  const spacingY = 31;
   const bodies = [];
   visible.forEach((wish, index) => {
     const originalIndex = count - visible.length + index;
     const row = Math.floor(index / 4);
-    const col = index % 4;
-    const stagger = row % 2 ? 18 : 0;
+    const random = seededRandom(wish.id || wish.text);
     const el = document.createElement("button");
     el.type = "button";
     el.className = "paper-star";
@@ -110,10 +148,18 @@ function renderStars(animateLast = false) {
     el.dataset.color = wish.color || "rose";
     el.setAttribute("aria-label", `Read wish ${originalIndex + 1}`);
     const radius = size * 0.44;
-    const x = Math.max(radius, Math.min(width - radius, 5 + col * spacingX + stagger + ((originalIndex * 19) % 9)));
-    const y = Math.max(radius, height - 28 - (row + 1) * spacingY - ((originalIndex * 11) % 7));
+    let x = radius;
+    let y = height - radius - 5 - row * 30;
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const candidateX = radius + random() * Math.max(1, width - radius * 2);
+      const candidateY = Math.max(radius, Math.min(height - radius, y + (random() - .5) * 22));
+      const clear = bodies.every((other) => Math.hypot(candidateX - other.x, candidateY - other.y) > radius + other.radius - 12);
+      x = candidateX;
+      y = candidateY;
+      if (clear) break;
+    }
     const falling = animateLast && index === visible.length - 1;
-    const body = { x: falling ? width * .5 : x, y: falling ? -radius : y, vx: falling ? (Math.random() - .5) * 1.4 : 0, vy: 0, radius, el, falling, rotation: ((originalIndex * 31) % 34) - 17, spin: falling ? (Math.random() - .5) * 2 : 0 };
+    const body = { x: falling ? width * .5 : x, y: falling ? -radius : y, vx: falling ? (Math.random() - .5) * 1.4 : 0, vy: 0, radius, el, falling, rotation: (random() - .5) * 42, spin: falling ? (Math.random() - .5) * 2 : 0 };
     bodies.push(body);
     el.style.left = `${body.x - radius}px`;
     el.style.top = `${body.y - radius}px`;
@@ -121,7 +167,12 @@ function renderStars(animateLast = false) {
     el.style.zIndex = String(2 + row);
     el.style.animationDelay = `${(index % 7) * 32}ms`;
     el.innerHTML = starSvg(wish.color, originalIndex) + `<span class="star-note">${escapeHtml(wish.text)}</span>`;
-    el.addEventListener("click", (event) => { event.stopPropagation(); openModal(wish); });
+    el.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (suppressNextClick) { suppressNextClick = false; return; }
+      openModal(wish);
+    });
+    wireStarDrag(el, wish, "jar");
     els.stars.append(el);
   });
   if (animateLast && bodies.length) runDropPhysics(bodies, width, height);
@@ -129,6 +180,124 @@ function renderStars(animateLast = false) {
   els.jarWrap.classList.toggle("has-wishes", count > 0);
   els.count.textContent = count === 1 ? "one little wish" : count ? `${count} little wishes` : "your wishing jar";
   els.number.textContent = String(count).padStart(2, "0");
+}
+function renderTray() {
+  els.tray.classList.toggle("has-drafts", drafts.length > 0);
+  els.trayDrafts.innerHTML = "";
+  drafts.slice(-8).forEach((wish, index) => {
+    const random = seededRandom(wish.id);
+    const spots = [[16, 15], [86, 3], [46, 42], [143, 19], [117, 41], [9, 38], [156, 42], [66, 25]];
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "tray-draft";
+    el.style.left = `${spots[index][0] + (random() - .5) * 7}px`;
+    el.style.top = `${spots[index][1] + (random() - .5) * 7}px`;
+    el.style.transform = `rotate(${(random() - .5) * 34}deg)`;
+    el.setAttribute("aria-label", `Edit draft: ${wish.text}`);
+    el.title = wish.text;
+    el.innerHTML = starSvg(wish.color, wish.id);
+    el.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (suppressNextClick) { suppressNextClick = false; return; }
+      openModal(null, null, wish);
+    });
+    wireStarDrag(el, wish, "tray");
+    els.trayDrafts.append(el);
+  });
+}
+function wireStarDrag(element, wish, origin) {
+  element.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    const rect = element.getBoundingClientRect();
+    const ghost = element.cloneNode(true);
+    ghost.classList.add("drag-ghost");
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    ghost.style.transform = "scale(1.08) rotate(8deg)";
+    document.body.append(ghost);
+    element.classList.add("dragging-source");
+    activeDrag = { pointerId: event.pointerId, origin, wish, element, ghost, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false };
+  });
+}
+function pointIn(rect, x, y) { return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom; }
+window.addEventListener("pointermove", (event) => {
+  if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+  const drag = activeDrag;
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+  if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 7) {
+    drag.moved = true;
+    drag.element.classList.add("dragging-source");
+  }
+  if (!drag.moved) return;
+  event.preventDefault();
+  drag.ghost.style.left = `${event.clientX - drag.ghost.offsetWidth / 2}px`;
+  drag.ghost.style.top = `${event.clientY - drag.ghost.offsetHeight / 2}px`;
+  const destination = drag.origin === "tray" ? els.jar : els.tray;
+  const hovering = pointIn(destination.getBoundingClientRect(), event.clientX, event.clientY);
+  destination.classList.toggle("drop-target", hovering);
+});
+window.addEventListener("pointerup", async (event) => {
+  if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+  const drag = activeDrag;
+  activeDrag = null;
+  drag.ghost.remove();
+  drag.element.classList.remove("dragging-source");
+  els.jar.classList.remove("drop-target");
+  els.tray.classList.remove("drop-target");
+  if (!drag.moved) return;
+  suppressNextClick = true;
+  setTimeout(() => { suppressNextClick = false; }, 100);
+  const destination = drag.origin === "tray" ? els.jar : els.tray;
+  if (!pointIn(destination.getBoundingClientRect(), event.clientX, event.clientY)) return;
+  if (drag.origin === "tray") await moveDraftIntoJar(drag.wish);
+  else await moveWishToTray(drag.wish);
+});
+window.addEventListener("pointercancel", () => {
+  if (!activeDrag) return;
+  activeDrag.ghost.remove();
+  activeDrag.element.classList.remove("dragging-source");
+  els.jar.classList.remove("drop-target");
+  els.tray.classList.remove("drop-target");
+  activeDrag = null;
+});
+async function moveDraftIntoJar(wish) {
+  try {
+    els.jar.classList.add("opening");
+    if (firebase) await firebase.add(jarId, wish);
+    else {
+      wishes = [...readLocal(jarId), wish];
+      writeLocal(jarId, wishes);
+      renderStars(true);
+    }
+    drafts = drafts.filter((draft) => draft.id !== wish.id);
+    writeDrafts();
+    renderTray();
+    showToast("Wish tucked into the jar");
+  } catch (error) {
+    els.jar.classList.remove("opening");
+    showToast("That wish could not be added yet");
+  }
+}
+async function moveWishToTray(wish) {
+  try {
+    if (firebase) await firebase.remove(jarId, wish);
+    else {
+      wishes = wishes.filter((item) => item.id !== wish.id);
+      writeLocal(jarId, wishes);
+    }
+    wishes = wishes.filter((item) => item.id !== wish.id);
+    drafts.push(wish);
+    writeDrafts();
+    renderStars();
+    renderTray();
+    showToast("Wish moved to the tray to edit");
+  } catch (error) {
+    showToast("That wish could not be moved yet");
+  }
 }
 function runDropPhysics(bodies, width, height) {
   cancelAnimationFrame(physicsFrame);
@@ -185,6 +354,7 @@ function escapeHtml(text) { return text.replace(/[&<>"']/g, (char) => ({ "&":"&a
 
 async function initJar(id) {
   jarId = id;
+  drafts = readDrafts(id);
   showJarView();
   if (firebase) {
     unsubscribe?.();
@@ -197,6 +367,7 @@ async function initJar(id) {
     wishes = readLocal(id);
     renderStars();
   }
+  renderTray();
 }
 
 els.create.addEventListener("click", async () => {
@@ -208,12 +379,16 @@ els.create.addEventListener("click", async () => {
   showToast("Your jar is ready to share ✦");
 });
 els.write.addEventListener("click", () => openModal());
+els.palette.addEventListener("click", (event) => {
+  const note = event.target.closest("[data-note-color]");
+  if (note) openModal(null, note.dataset.noteColor);
+});
 els.close.addEventListener("click", closeModal);
 els.modal.addEventListener("click", (event) => { if (event.target === els.modal) closeModal(); });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeModal(); });
 els.input.addEventListener("input", () => { els.chars.textContent = `${els.input.value.length} / 240`; });
 els.jar.addEventListener("click", () => {
-  if (!wishes.length) { if (jarId) openModal(); return; }
+  if (!wishes.length) { showToast("Choose a paper from the tray"); return; }
   const wish = wishes[Math.floor(Math.random() * wishes.length)];
   openModal(wish);
 });
@@ -231,26 +406,35 @@ els.submit.addEventListener("click", async () => {
   const text = els.input.value.trim();
   if (!text) { els.input.focus(); showToast("Every wish starts with a few words"); return; }
   if (!jarId) return;
-  const wish = { id: makeId(), text, color: palette[Math.floor(Math.random() * palette.length)], createdAt: Date.now() };
+  const priorDraft = drafts.find((draft) => draft.id === editingDraftId);
+  const wish = priorDraft
+    ? { ...priorDraft, text, color: composingColor || priorDraft.color }
+    : { id: makeId(), text, color: composingColor || "rose", createdAt: Date.now() };
   const note = document.createElement("div");
   note.className = "flight-note";
-  note.textContent = text;
+  const theme = noteTheme[wish.color] || noteTheme.rose;
+  note.style.setProperty("--note-paper", theme.paper);
+  note.style.setProperty("--note-hue", theme.hue);
+  note.innerHTML = `<span class="flight-copy">${escapeHtml(text)}</span><img class="flight-star" src="origami-star.png" alt="" aria-hidden="true" style="--star-hue:${starHue[wish.color] || starHue.rose}">`;
   document.body.append(note);
   closeModal();
-  els.jar.classList.add("opening");
+  const trayRect = els.tray.getBoundingClientRect();
+  const startX = window.innerWidth / 2;
+  const startY = window.innerHeight / 2;
+  const flightX = trayRect.left + trayRect.width / 2 - startX;
+  const flightY = trayRect.top + trayRect.height / 2 - startY;
+  note.style.setProperty("--flight-x", `${flightX}px`);
+  note.style.setProperty("--flight-y", `${flightY}px`);
+  note.style.setProperty("--flight-x-mid", `${flightX * .38}px`);
+  note.style.setProperty("--flight-y-mid", `${flightY * .38}px`);
   requestAnimationFrame(() => note.classList.add("folding"));
-  await new Promise((resolve) => setTimeout(resolve, 760));
+  await new Promise((resolve) => setTimeout(resolve, 1320));
   note.remove();
-  if (firebase) await firebase.add(jarId, wish);
-  else {
-    wishes = [...readLocal(jarId), wish];
-    writeLocal(jarId, wishes);
-    renderStars(true);
-  }
-  els.jar.classList.remove("receiving");
-  void els.jar.offsetWidth;
-  els.jar.classList.add("receiving");
-  showToast("Your wish has found its way ✦");
+  if (priorDraft) drafts = drafts.map((draft) => draft.id === wish.id ? wish : draft);
+  else drafts = [...drafts, wish];
+  writeDrafts();
+  renderTray();
+  showToast("Draft ready — drag its star into the jar");
 });
 
 window.addEventListener("storage", (event) => {

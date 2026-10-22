@@ -19,6 +19,7 @@
         <button class="share-link" id="shareButton" hidden><span aria-hidden="true">↗</span> Share jar</button>
       </header>
 
+      <section class="hero-layout">
       <section class="intro" id="intro">
         <p class="eyebrow"><span>✦</span> A little wonder, made together <span>✦</span></p>
         <h1>Some things are<br /><em>worth wishing for.</em></h1>
@@ -26,7 +27,18 @@
       </section>
 
       <section class="stage" aria-label="Your wishing jar">
-        <div class="side-caption left-caption"><span class="caption-rule"></span><span>made of little<br />bright things</span></div>
+        <div class="silver-tray" id="silverTray" role="group" aria-label="Draft tray">
+          <div class="note-palette" id="notePalette" role="group" aria-label="Choose paper color">
+            <button class="note-color note-sunshine" type="button" data-note-color="sunshine" aria-label="Yellow paper" title="Yellow"></button>
+            <button class="note-color note-peach" type="button" data-note-color="peach" aria-label="Peach paper" title="Peach"></button>
+            <button class="note-color note-rose" type="button" data-note-color="rose" aria-label="Pink paper" title="Pink"></button>
+            <button class="note-color note-leaf" type="button" data-note-color="leaf" aria-label="Green paper" title="Green"></button>
+            <button class="note-color note-sky" type="button" data-note-color="sky" aria-label="Blue paper" title="Blue"></button>
+            <button class="note-color note-lilac" type="button" data-note-color="lilac" aria-label="Lilac paper" title="Lilac"></button>
+          </div>
+          <div class="tray-drafts" id="trayDrafts" aria-label="Draft stars"></div>
+          <img class="tray-photo" src="silver-tray.png" alt="" aria-hidden="true" draggable="false">
+        </div>
         <div class="jar-wrap" id="jarWrap">
           <div class="jar-glow"></div>
           <div class="jar" id="jar" role="button" tabindex="0" aria-label="Open a wish from the jar">
@@ -46,9 +58,8 @@
           <div class="jar-shadow"></div>
           <div class="jar-label" id="jarLabel"><span class="label-spark">✳</span><span id="wishCount">your wishing jar</span></div>
           <div class="empty-prompt" id="emptyPrompt"><span>✦</span><br />your first wish<br />is waiting</div>
-          <div class="jar-instruction" id="jarInstruction">tap a star to open a wish <span>↗</span></div>
+          <div class="jar-instruction" id="jarInstruction">tap a star to read a wish <span>↗</span></div>
         </div>
-        <div class="side-caption right-caption"><span class="caption-number" id="wishNumber">01</span><span>every wish<br />has a home</span></div>
       </section>
 
       <section class="actions" id="landingActions">
@@ -58,6 +69,8 @@
       <section class="actions" id="jarActions" hidden>
         <button class="primary-button" id="writeButton"><span class="button-star">✦</span> Write a wish <span class="button-arrow">→</span></button>
         <p class="action-caption" id="jarCaption">Leave something lovely for the next person.</p>
+      </section>
+      <span class="sr-only" id="wishNumber" aria-live="polite">00</span>
       </section>
 
       <footer class="footer"><span>✳</span> made with a little hope <span>·</span> keep it close, pass it on</footer>
@@ -70,7 +83,7 @@
         <p class="note-kicker" id="noteKicker">A wish for the jar</p>
         <h2 id="noteHeading">What are you wishing for?</h2>
         <textarea id="wishInput" maxlength="240" placeholder="Let it be something good…" aria-label="Your wish"></textarea>
-        <div class="note-bottom"><span id="characterCount">0 / 240</span><span>just between us and the stars</span></div>
+        <div class="note-bottom"><span id="characterCount">0 / 240</span></div>
         <button class="note-submit" id="submitWish">Fold my wish <span>✦</span></button>
       </section>
     </div>
