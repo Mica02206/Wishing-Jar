@@ -2,18 +2,22 @@ import { firebaseConfig } from "./firebase-config.js";
 
 const $ = (selector) => document.querySelector(selector);
 const els = {
-  intro: $("#intro"), create: $("#createButton"), write: $("#writeButton"),
-  landing: $("#landingActions"), jarActions: $("#jarActions"), share: $("#shareButton"),
+  intro: $("#intro"), create: $("#createButton"),
+  landing: $("#landingActions"), jarActions: $("#jarActions"),
   palette: $("#notePalette"), tray: $("#silverTray"), trayDrafts: $("#trayDrafts"), stage: $(".stage"),
   modal: $("#wishModal"), input: $("#wishInput"), submit: $("#submitWish"),
   close: $("#closeModal"), chars: $("#characterCount"), stars: $("#starLayer"),
   jar: $("#jar"), jarWrap: $("#jarWrap"), empty: $("#emptyPrompt"),
-  count: $("#wishCount"), number: $("#wishNumber"), instruction: $("#jarInstruction"),
-  topStatus: $("#topStatus"), caption: $("#jarCaption"), toast: $("#toast")
+  count: $("#wishCount"), number: $("#wishNumber"),
+  jarNameControl: $("#jarNameControl"), jarNameLabel: $("#jarNameLabel"), renameJar: $("#renameJarButton"),
+  finishShare: $("#finishShareButton"),
+  caption: $("#jarCaption"), toast: $("#toast")
 };
 
 const params = new URLSearchParams(location.search);
 let jarId = params.get("jar");
+let jarName = "My wishing jar";
+let readOnly = params.get("view") === "readonly";
 let wishes = [];
 let drafts = [];
 let firebase = null;
@@ -23,6 +27,7 @@ let physicsFrame = 0;
 let composingColor = null;
 let editingDraftId = null;
 let activeDrag = null;
+let activeObjectDrag = null;
 let suppressNextClick = false;
 const palette = ["rose", "peach", "sunshine", "leaf", "sky", "cobalt", "lilac", "coral"];
 const starHue = { rose: "295deg", peach: "350deg", sunshine: "15deg", leaf: "110deg", sky: "150deg", cobalt: "190deg", lilac: "245deg", coral: "330deg" };
@@ -42,15 +47,17 @@ if (firebaseReady) {
   const app = appSdk.initializeApp(firebaseConfig);
   const db = dbSdk.getFirestore(app);
   firebase = {
-    create: async (id) => dbSdk.setDoc(dbSdk.doc(db, "jars", id), { wishes: [], createdAt: Date.now() }),
-    listen: (id, callback) => dbSdk.onSnapshot(dbSdk.doc(db, "jars", id), (snapshot) => callback(snapshot.exists() ? snapshot.data().wishes ?? [] : [])),
+    create: async (id) => dbSdk.setDoc(dbSdk.doc(db, "jars", id), { name: jarName, wishes: [], createdAt: Date.now() }),
+    listen: (id, callback) => dbSdk.onSnapshot(dbSdk.doc(db, "jars", id), (snapshot) => callback(snapshot.exists() ? snapshot.data() : { name: "My wishing jar", wishes: [] })),
     add: async (id, wish) => dbSdk.updateDoc(dbSdk.doc(db, "jars", id), { wishes: dbSdk.arrayUnion(wish) }),
-    remove: async (id, wish) => dbSdk.updateDoc(dbSdk.doc(db, "jars", id), { wishes: dbSdk.arrayRemove(wish) })
+    remove: async (id, wish) => dbSdk.updateDoc(dbSdk.doc(db, "jars", id), { wishes: dbSdk.arrayRemove(wish) }),
+    rename: async (id, name) => dbSdk.updateDoc(dbSdk.doc(db, "jars", id), { name })
   };
 }
 
 function localKey(id) { return `wishing-jar:${id}`; }
 function draftKey(id) { return `wishing-jar-drafts:${id}`; }
+function nameKey(id) { return `wishing-jar-name:${id}`; }
 function readLocal(id) {
   try { return JSON.parse(localStorage.getItem(localKey(id)) || "[]"); }
   catch { return []; }
@@ -61,12 +68,24 @@ function readDrafts(id) {
 }
 function writeLocal(id, list) { localStorage.setItem(localKey(id), JSON.stringify(list)); }
 function writeDrafts() { if (jarId) localStorage.setItem(draftKey(jarId), JSON.stringify(drafts)); }
+function writeJarName() {
+  if (!jarId) return;
+  els.jarNameLabel.textContent = jarName;
+  document.title = `${jarName} — wishing jar`;
+}
 function makeId() {
   return crypto.randomUUID ? crypto.randomUUID().replaceAll("-", "").slice(0, 12) : Math.random().toString(36).slice(2, 14);
 }
-function jarUrl(id) {
+function jarUrl(id, readOnlyLink = false) {
   const url = new URL(location.href);
   url.searchParams.set("jar", id);
+  if (readOnlyLink) {
+    url.searchParams.set("view", "readonly");
+    url.searchParams.set("title", jarName);
+  } else {
+    url.searchParams.delete("view");
+    url.searchParams.delete("title");
+  }
   return url.toString();
 }
 function showToast(message) {
@@ -77,13 +96,16 @@ function showToast(message) {
 }
 function showJarView() {
   els.landing.hidden = true;
-  els.jarActions.hidden = true;
+  els.jarActions.hidden = false;
   els.stage.classList.add("has-jar");
-  els.share.hidden = false;
-  els.topStatus.textContent = "A jar made just for you";
-  els.caption.textContent = "Leave something lovely for the next person.";
+  els.stage.classList.toggle("read-only-view", readOnly);
+  els.jarNameControl.hidden = false;
+  els.renameJar.disabled = readOnly;
+  els.finishShare.hidden = readOnly;
+  els.caption.textContent = "Tap a star to read";
 }
 function openModal(readWish = null, selectedColor = null, draftWish = null) {
+  if (readOnly && !readWish) return;
   const reading = Boolean(readWish);
   const editing = Boolean(draftWish);
   const currentWish = readWish || draftWish;
@@ -177,7 +199,6 @@ function renderStars(animateLast = false) {
   });
   if (animateLast && bodies.length) runDropPhysics(bodies, width, height);
   els.jarWrap.classList.toggle("empty", count === 0);
-  els.jarWrap.classList.toggle("has-wishes", count > 0);
   els.count.textContent = count === 1 ? "one little wish" : count ? `${count} little wishes` : "your wishing jar";
   els.number.textContent = String(count).padStart(2, "0");
 }
@@ -222,6 +243,57 @@ function wireStarDrag(element, wish, origin) {
     activeDrag = { pointerId: event.pointerId, origin, wish, element, ghost, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false };
   });
 }
+function wireMovable(element) {
+  element.addEventListener("pointerdown", (event) => {
+    if (activeDrag || (event.button !== undefined && event.button !== 0)) return;
+    if (event.target.closest("button, a, textarea, input, .paper-star, .tray-draft, .note-color")) return;
+    const rect = element.getBoundingClientRect();
+    activeObjectDrag = {
+      pointerId: event.pointerId, element, startX: event.clientX, startY: event.clientY,
+      rect, x: Number(element.dataset.moveX || 0), y: Number(element.dataset.moveY || 0), moved: false
+    };
+  });
+}
+wireMovable(els.jarWrap);
+wireMovable(els.tray);
+window.addEventListener("pointermove", (event) => {
+  const drag = activeObjectDrag;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  if (!drag.moved && Math.hypot(dx, dy) > 6) {
+    drag.moved = true;
+    drag.element.classList.add("dragging-object");
+  }
+  if (!drag.moved) return;
+  event.preventDefault();
+  const bounds = els.stage.getBoundingClientRect();
+  const scale = drag.rect.width / Math.max(drag.element.offsetWidth, 1) || 1;
+  const minX = drag.rect.width > bounds.width ? bounds.left + bounds.width / 2 - (drag.rect.left + drag.rect.width / 2) : bounds.left - drag.rect.left;
+  const maxX = drag.rect.width > bounds.width ? minX : bounds.right - drag.rect.right;
+  const minY = drag.rect.height > bounds.height ? bounds.top + bounds.height / 2 - (drag.rect.top + drag.rect.height / 2) : bounds.top - drag.rect.top;
+  const maxY = drag.rect.height > bounds.height ? minY : bounds.bottom - drag.rect.bottom;
+  const screenX = Math.max(minX, Math.min(maxX, dx));
+  const screenY = Math.max(minY, Math.min(maxY, dy));
+  drag.element.dataset.moveX = String(drag.x + screenX / scale);
+  drag.element.dataset.moveY = String(drag.y + screenY / scale);
+  drag.element.style.translate = `${drag.element.dataset.moveX}px ${drag.element.dataset.moveY}px`;
+});
+window.addEventListener("pointerup", (event) => {
+  const drag = activeObjectDrag;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  activeObjectDrag = null;
+  drag.element.classList.remove("dragging-object");
+  if (drag.moved) {
+    suppressNextClick = true;
+    setTimeout(() => { suppressNextClick = false; }, 150);
+  }
+});
+window.addEventListener("pointercancel", (event) => {
+  if (!activeObjectDrag || event.pointerId !== activeObjectDrag.pointerId) return;
+  activeObjectDrag.element.classList.remove("dragging-object");
+  activeObjectDrag = null;
+});
 function pointIn(rect, x, y) { return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom; }
 window.addEventListener("pointermove", (event) => {
   if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
@@ -354,11 +426,20 @@ function escapeHtml(text) { return text.replace(/[&<>"']/g, (char) => ({ "&":"&a
 
 async function initJar(id) {
   jarId = id;
+  readOnly = new URLSearchParams(location.search).get("view") === "readonly";
+  jarName = localStorage.getItem(nameKey(id)) || new URLSearchParams(location.search).get("title") || "My wishing jar";
   drafts = readDrafts(id);
+  writeJarName();
   showJarView();
   if (firebase) {
     unsubscribe?.();
-    unsubscribe = firebase.listen(id, (next) => {
+    unsubscribe = firebase.listen(id, (data) => {
+      const next = Array.isArray(data) ? data : (data.wishes ?? []);
+      if (data.name) {
+        jarName = data.name;
+        localStorage.setItem(nameKey(id), jarName);
+        writeJarName();
+      }
       const fresh = next.filter((wish) => !wishes.some((old) => old.id === wish.id));
       wishes = next;
       renderStars(fresh.length > 0);
@@ -372,14 +453,53 @@ async function initJar(id) {
 
 els.create.addEventListener("click", async () => {
   const id = makeId();
+  jarName = "My wishing jar";
+  readOnly = false;
+  localStorage.setItem(nameKey(id), jarName);
   if (firebase) await firebase.create(id);
   else writeLocal(id, []);
   history.pushState({}, "", jarUrl(id));
   await initJar(id);
   showToast("Your jar is ready to share ✦");
 });
-els.write.addEventListener("click", () => openModal());
+els.renameJar.addEventListener("click", () => {
+  if (readOnly) return;
+  const input = document.createElement("input");
+  input.className = "jar-name-input";
+  input.type = "text";
+  input.maxLength = 48;
+  input.value = jarName;
+  input.setAttribute("aria-label", "Jar name");
+  els.renameJar.replaceWith(input);
+  input.focus();
+  input.select();
+  let finished = false;
+  const finish = async (save) => {
+    if (finished) return;
+    finished = true;
+    const nextName = input.value.trim().slice(0, 48);
+    if (save && !nextName) showToast("A jar needs a name");
+    else if (save && nextName !== jarName) {
+      try {
+        if (firebase) await firebase.rename(jarId, nextName);
+        jarName = nextName;
+        localStorage.setItem(nameKey(jarId), jarName);
+        writeJarName();
+        showToast("Jar name saved");
+      } catch (error) {
+        showToast("The jar name could not be saved yet");
+      }
+    }
+    input.replaceWith(els.renameJar);
+  };
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+    if (event.key === "Escape") { input.value = jarName; input.blur(); }
+  });
+  input.addEventListener("blur", () => finish(true));
+});
 els.palette.addEventListener("click", (event) => {
+  if (readOnly) return;
   const note = event.target.closest("[data-note-color]");
   if (note) openModal(null, note.dataset.noteColor);
 });
@@ -388,21 +508,23 @@ els.modal.addEventListener("click", (event) => { if (event.target === els.modal)
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeModal(); });
 els.input.addEventListener("input", () => { els.chars.textContent = `${els.input.value.length} / 240`; });
 els.jar.addEventListener("click", () => {
+  if (suppressNextClick) { suppressNextClick = false; return; }
   if (!wishes.length) { showToast("Choose a paper from the tray"); return; }
   const wish = wishes[Math.floor(Math.random() * wishes.length)];
   openModal(wish);
 });
 els.jar.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); els.jar.click(); } });
-els.share.addEventListener("click", async () => {
+els.finishShare.addEventListener("click", async () => {
   try {
-    await navigator.clipboard.writeText(jarUrl(jarId));
-    showToast("Jar link copied ✦");
+    await navigator.clipboard.writeText(jarUrl(jarId, true));
+    showToast("Finished jar link copied");
   } catch {
-    prompt("Copy your wishing jar link", jarUrl(jarId));
+    prompt("Copy your finished jar link", jarUrl(jarId, true));
   }
 });
 
 els.submit.addEventListener("click", async () => {
+  if (readOnly) return;
   const text = els.input.value.trim();
   if (!text) { els.input.focus(); showToast("Every wish starts with a few words"); return; }
   if (!jarId) return;
@@ -441,6 +563,10 @@ window.addEventListener("storage", (event) => {
   if (jarId && event.key === localKey(jarId) && !firebase) {
     wishes = readLocal(jarId);
     renderStars();
+  }
+  if (jarId && event.key === nameKey(jarId) && !firebase) {
+    jarName = localStorage.getItem(nameKey(jarId)) || "My wishing jar";
+    writeJarName();
   }
 });
 window.addEventListener("popstate", () => {

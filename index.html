@@ -15,8 +15,9 @@
     <main class="app-shell">
       <header class="topbar">
         <a class="brand" href="./" aria-label="Wishing Jar home"><span class="brand-mark">✳</span> wishing jar</a>
-        <div class="top-note"><span class="live-dot"></span><span id="topStatus">A small place for big hopes</span></div>
-        <button class="share-link" id="shareButton" hidden><span aria-hidden="true">↗</span> Share jar</button>
+        <div class="jar-name-control" id="jarNameControl" hidden>
+          <button class="jar-name-button" id="renameJarButton" type="button" aria-label="Rename this jar"><span id="jarNameLabel">My wishing jar</span><span class="edit-mark" aria-hidden="true">✎</span></button>
+        </div>
       </header>
 
       <section class="hero-layout">
@@ -27,7 +28,7 @@
       </section>
 
       <section class="stage" aria-label="Your wishing jar">
-        <div class="silver-tray" id="silverTray" role="group" aria-label="Draft tray">
+        <div class="silver-tray" id="silverTray" role="group" aria-label="Draft tray. Drag the tray to move it.">
           <div class="note-palette" id="notePalette" role="group" aria-label="Choose paper color">
             <button class="note-color note-sunshine" type="button" data-note-color="sunshine" aria-label="Yellow paper" title="Yellow"></button>
             <button class="note-color note-peach" type="button" data-note-color="peach" aria-label="Peach paper" title="Peach"></button>
@@ -41,7 +42,7 @@
         </div>
         <div class="jar-wrap" id="jarWrap">
           <div class="jar-glow"></div>
-          <div class="jar" id="jar" role="button" tabindex="0" aria-label="Open a wish from the jar">
+          <div class="jar" id="jar" role="button" tabindex="0" aria-label="Click to open a wish, or drag to move the jar">
             <div class="jar-lid" aria-hidden="true"></div>
             <img class="jar-photo" src="jar-photo.png" alt="" aria-hidden="true" />
             <div class="jar-neck"></div>
@@ -58,7 +59,6 @@
           <div class="jar-shadow"></div>
           <div class="jar-label" id="jarLabel"><span class="label-spark">✳</span><span id="wishCount">your wishing jar</span></div>
           <div class="empty-prompt" id="emptyPrompt"><span>✦</span><br />your first wish<br />is waiting</div>
-          <div class="jar-instruction" id="jarInstruction">tap a star to read a wish <span>↗</span></div>
         </div>
       </section>
 
@@ -67,8 +67,10 @@
         <p class="action-caption">A private little link, yours to share with anyone.</p>
       </section>
       <section class="actions" id="jarActions" hidden>
-        <button class="primary-button" id="writeButton"><span class="button-star">✦</span> Write a wish <span class="button-arrow">→</span></button>
-        <p class="action-caption" id="jarCaption">Leave something lovely for the next person.</p>
+        <p class="action-caption" id="jarCaption">Tap a star to read</p>
+        <div class="jar-tools">
+          <button class="quiet-button" id="finishShareButton" type="button">Share finished jar</button>
+        </div>
       </section>
       <span class="sr-only" id="wishNumber" aria-live="polite">00</span>
       </section>
